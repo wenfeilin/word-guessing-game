@@ -8,7 +8,9 @@
 
 #include "message.h"
 #include "socket.h"
+#include "user.h"
 
+// for linked list
 typedef struct user_node {
   int socket_fd;
   struct user_node* next;
@@ -24,50 +26,71 @@ typedef struct user_set {
   int numUsers;
 } user_set_t;
 
-typedef struct user_thread {
-  int client_socket_fd;
-  user_set_t* chatUsers;
+typedef struct user_thread { // "server info"
+  int client_socket_fd; // the connecting user (changes every time we get a new connection)
+  user_set_t* chatUsers; // list of users
 } user_thread_t;
 
+// Global variables
+user_thread_t* server_info;
+pthread_mutex_t users_lock; // Lock to protect modification of list of users.
+
+
+// Helper Functions
+void remove_user(int user_to_delete_fd) {
+  pthread_mutex_lock(&users_lock);
+  user_node_t* curr = server_info->chatUsers->firstUser;
+  user_node_t* prev = NULL;
+
+  while(curr != NULL) {
+    if (curr->socket_fd == user_to_delete_fd) {
+      user_node_t* temp = curr->next;
+      prev->next = curr->next;
+      free(curr);
+      curr = temp;
+    } else {
+      prev = curr;
+      curr = curr->next;
+    }
+  }
+  pthread_mutex_unlock(&users_lock);
+}
+
 void* worker(void* args) {
-  user_thread_t* user_args = (user_thread_t *) args;
+  user_thread_t* server_info = (user_thread_t *) args;
 
   // Read a message from the client
-  char* message = receive_message(user_args->client_socket_fd);
+  user_info_t* user_info = receive_message(server_info->client_socket_fd);
 
-  while (strcmp(message, "quit") != 0) {
-    if (message == NULL) {
-      perror("Failed to read message from client");
-      exit(EXIT_FAILURE);
-    }
-
-    // Capitalize message
-    for (char* s = message; *s != '\0'; s++) {
-      *s = (char) toupper((int)*s);
-    }
-
-    user_node_t* current = user_args->chatUsers->firstUser;
-    while (current != NULL) {
-      int rc = send_message(current->socket_fd, message);
-      if (rc == -1) {
-        perror("Failed to send message to client");
-        exit(EXIT_FAILURE);
+  while (true) {
+    // Remove the user if there's some error when trying to receive a message from it.
+    if (user_info == NULL) {
+      // Remove it from the list of users.
+      remove_user(server_info->client_socket_fd);
+      // close(server_info->client_socket_fd)
+      // Close sockets
+      close(server_info->client_socket_fd);
+    } else {
+      // Send message to all clients.
+      pthread_mutex_lock(&users_lock);
+      user_node_t* current = server_info->chatUsers->firstUser;
+      while (current != NULL) {
+        int rc = send_message(current->socket_fd, user_info);
+        if (rc == -1) {
+          perror("Failed to send message to client");
+          exit(EXIT_FAILURE);
+        }
+        current = current->next;
       }
-      current = current->next;
+      pthread_mutex_unlock(&users_lock);
+      
+      user_info = receive_message(server_info->client_socket_fd);
+      
+      // Free the message string
+      free(user_info->message);
+      free(user_info);
     }
-    
-    message = receive_message(user_args->client_socket_fd);
   }
-
-  // Print the message
-  printf("Client sent: %s\n", message);
-
-  // Free the message string
-  free(message);
-
-  // Close sockets
-  close(user_args->client_socket_fd);
-  free(user_args);
 
   return NULL;
 } 
@@ -93,19 +116,24 @@ int main() {
   users->firstUser = NULL;
   users->numUsers = 0;
 
+  pthread_mutex_init(&users_lock, NULL);
+
   while (true) {
     // Wait for a client to connect
     int* client_fd_copy = (int *) malloc(sizeof(int));
-    user_thread_t* user_args = (user_thread_t*) malloc(sizeof(user_thread_t));
+    server_info = (user_thread_t*) malloc(sizeof(user_thread_t));
 
+    // Accept connection from user
     int client_socket_fd = server_socket_accept(server_socket_fd);
     *client_fd_copy = client_socket_fd;
 
+    // Add user to list of users.
     user_node_t* newUser = malloc(sizeof(user_node_t));
     newUser->socket_fd = *client_fd_copy;
 
-    user_args->chatUsers = users;
-    user_args->client_socket_fd = *client_fd_copy;
+    pthread_mutex_lock(&users_lock);
+    server_info->chatUsers = users;
+    server_info->client_socket_fd = *client_fd_copy;
 
     if (users->firstUser == NULL) {
       users->firstUser = newUser;
@@ -115,6 +143,7 @@ int main() {
       current->next = newUser;
     }
     users->numUsers++;
+    pthread_mutex_unlock(&users_lock);
 
     if (client_socket_fd == -1) {
       perror("accept failed");
@@ -124,19 +153,10 @@ int main() {
     printf("Client connected!\n");
 
     pthread_t thread;
-    pthread_create(&thread, NULL, worker, user_args);
-
-    // Send a message to the client
-
-    // int rc = send_message(client_socket_fd, "Hello client!");
-    // if (rc == -1) {
-    //   perror("Failed to send message to client");
-    //   exit(EXIT_FAILURE);
-    // }
+    pthread_create(&thread, NULL, worker, server_info);
   }
 
-  
-  free (users);
+  free(server_info);
   close(server_socket_fd);
 
   return 0;
