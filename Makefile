@@ -1,5 +1,5 @@
-CC := clang
-CFLAGS := -g
+CC := clang 
+CFLAGS := -g -fsanitize=address
 
 all: server client
 

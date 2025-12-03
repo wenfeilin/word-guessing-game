@@ -9,7 +9,12 @@
 
 // Send a across a socket with a header that includes the message length.
 int send_message(int fd, user_info_t* user_info) {
-  // If the message is NULL, set errno to EINVAL and return an error
+  // If the message or user info is NULL, set errno to EINVAL and return an error
+  if (user_info == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   if (user_info->message == NULL) {
     errno = EINVAL;
     return -1;

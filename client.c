@@ -24,6 +24,8 @@ void* user_thread (void* args) {
   while (getline(&line, &size, stdin)) {
     line[strlen(line) - 1] = '\0';
 
+    if (strcmp(line, "quit") == 0) break;
+
     user_info_t* user_info = malloc(sizeof(user_info_t));
     user_info->username = strdup(username);
     user_info->message = strdup(line);
@@ -33,8 +35,11 @@ void* user_thread (void* args) {
       perror("Failed to send message to server");
       exit(EXIT_FAILURE);
     }
-    if (strcmp(line, "quit") == 0) break;
   }
+
+  printf("Socket is closed.\n");
+
+  close(socket_fd);
 
   return NULL;
 }
@@ -52,9 +57,8 @@ void* server_thread (void* args) {
     // Receive a message from the server
     user_info_t* user_info = receive_message(socket_fd);
     
-    if (user_info->message == NULL || user_info->username == NULL) {
-      perror("Failed to read message from server");
-      exit(EXIT_FAILURE);
+    if (user_info == NULL) {
+      break;
     }
     printf("%s: %s\n", user_info->username, user_info->message);
 
@@ -63,6 +67,8 @@ void* server_thread (void* args) {
     free(user_info->message);
     free(user_info);
   }
+  
+  return NULL;
 }
 
 int main(int argc, char** argv) {
@@ -92,8 +98,7 @@ int main(int argc, char** argv) {
   pthread_join(input_thread, NULL);
   pthread_join(output_thread, NULL);
 
-  // Close socket
-  close(socket_fd);
+  printf("Client should be closed now.\n");
 
   return 0;
 }
