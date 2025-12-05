@@ -16,6 +16,7 @@
 // A node where its value is the socket file descriptor
 typedef struct user_node {
   int socket_fd;
+  int score;
   struct user_node* next;
 } user_node_t;
 
@@ -32,15 +33,26 @@ typedef struct user_list {
 typedef struct server_info {
   int connecting_user_socket_fd; // The most recent connecting user (facilitates adding connections)
   user_list_t* chat_users; // List of currently connected users
+
+  // Note: The order of asking q's = the order of linked list. Also order of being host = order of linked list.
+  // Game-Related Info:
+  user_node_t* curr_host; 
+  user_node_t* curr_asker;
+  char* secret_word;
 } server_info_t;
 
 
 /*******************
  * Global variables
  *******************/
-server_info_t* server_info = NULL;
-pthread_mutex_t server_info_lock; // A lock that should be used to protect the modification of the users list.
+server_info_t* server_info_global = NULL;
+pthread_mutex_t server_info_global_lock; // A lock that should be used to protect the modification of the users list.
 
+
+/*******************
+ * Function Declarations
+ *******************/
+void* forward_msg(void* args);
 
 /*******************
  * Helper Functions
@@ -52,28 +64,28 @@ pthread_mutex_t server_info_lock; // A lock that should be used to protect the m
  * \param user_to_delete_fd The file descriptor of the user to be deleted from the list
  */
 void remove_user(int user_to_delete_fd) {
-  pthread_mutex_lock(&server_info_lock);
+  pthread_mutex_lock(&server_info_global_lock);
 
-  printf("Users left (before removal): %d\n", server_info->chat_users->numUsers);
+  printf("Users left (before removal): %d\n", server_info_global->chat_users->numUsers);
 
   // Ensure the list of users isn't empty.
-  if (server_info->chat_users->first_user == NULL) {
+  if (server_info_global->chat_users->first_user == NULL) {
     perror("No user to delete. The list is empty.");
     exit(1);
   }
 
   // Code from GFG: https://www.geeksforgeeks.org/c/c-program-for-deleting-a-node-in-a-linked-list/
   // Store head node
-  user_node_t *temp = server_info->chat_users->first_user, *prev;
+  user_node_t *temp = server_info_global->chat_users->first_user, *prev;
 
   // Case 1: Deleting the first user.
   if (temp != NULL && temp->socket_fd == user_to_delete_fd) {
-    server_info->chat_users->first_user = temp->next; // Changed head
+    server_info_global->chat_users->first_user = temp->next; // Changed head
     free(temp); // free old head
-    server_info->chat_users->numUsers--;
+    server_info_global->chat_users->numUsers--;
 
-    printf("Users left (after removal): %d\n", server_info->chat_users->numUsers);
-    pthread_mutex_unlock(&server_info_lock);
+    printf("Users left (after removal): %d\n", server_info_global->chat_users->numUsers);
+    pthread_mutex_unlock(&server_info_global_lock);
     return;
   }
 
@@ -86,7 +98,7 @@ void remove_user(int user_to_delete_fd) {
 
   // If user to delete was not present in linked list
   if (temp == NULL) {
-    pthread_mutex_unlock(&server_info_lock);
+    pthread_mutex_unlock(&server_info_global_lock);
     return;
   }
 
@@ -96,20 +108,20 @@ void remove_user(int user_to_delete_fd) {
   free(temp); // Free memory
 
   // Decrement number of connected users.
-  server_info->chat_users->numUsers--;
+  server_info_global->chat_users->numUsers--;
 
-  printf("Users left (after removal): %d\n", server_info->chat_users->numUsers);
+  printf("Users left (after removal): %d\n", server_info_global->chat_users->numUsers);
 
-  pthread_mutex_unlock(&server_info_lock);
+  pthread_mutex_unlock(&server_info_global_lock);
 }
 
 /**
  * Print every connected users' file descriptor.
  */
-void printUsers() {
-  pthread_mutex_lock(&server_info_lock);
+void print_users() {
+  pthread_mutex_lock(&server_info_global_lock);
   // Loop through users list and print each one's file descriptor.
-  user_node_t * curr = server_info->chat_users->first_user;
+  user_node_t * curr = server_info_global->chat_users->first_user;
   int i = 1;
   
   while (curr != NULL) {
@@ -117,16 +129,65 @@ void printUsers() {
     i++;
     curr = curr->next;
   }
-  pthread_mutex_unlock(&server_info_lock);
+  pthread_mutex_unlock(&server_info_global_lock);
 }
 
+/**
+ * Thread Worker Functions (Core Functions)
+ */
+
+void* start_game(void* args) {
+  server_info_t* server_info = (server_info_t *) args;
+
+  // Pick the host. Go in order of linked list of users.
+  server_info->curr_host = server_info->chat_users->first_user;
+
+  printf("Curr host: %d\n", server_info->chat_users->first_user);
+
+  int rc = send_server_msg(server_info->curr_host->socket_fd, "You are the host. Pick your secret word.");
+
+  if (rc == -1) {
+    perror("Failed to send message to client");
+    exit(EXIT_FAILURE);
+  }
+
+  // Receive the secret word from the host.
+  user_info_t* user_info = receive_message(server_info->curr_host->socket_fd);
+
+  
+  // Save the secret word.
+  printf("the secret word?: %s\n", user_info->message);
+
+  pthread_mutex_lock(&server_info_global_lock);
+  server_info_global->secret_word = strdup(user_info->message);
+  pthread_mutex_unlock(&server_info_global_lock);
+
+  printf("The secret word is %s\n", server_info_global->secret_word);
+
+  // Loop through users list and create a thread to start communication w/ other users for each.
+  pthread_mutex_lock(&server_info_global_lock);
+  user_node_t * curr = server_info_global->chat_users->first_user;
+  
+  while (curr != NULL) {
+    pthread_t forward_msg_thread;
+    pthread_create(&forward_msg_thread, NULL, forward_msg, &curr->socket_fd);
+    curr = curr->next;
+  }
+  pthread_mutex_unlock(&server_info_global_lock);
+  
+
+  
+
+  // Create threads for game logic.
+  return NULL;
+}
 
 /**
  * Receives and sends user's message to all other users.
  */
 void* forward_msg(void* args) {
-  server_info_t* server_info = (server_info_t *) args;
-  int user_socket_fd = server_info->connecting_user_socket_fd;
+  int* user_socket = (int *) args;
+  int user_socket_fd = *user_socket;
 
   while (true) {
     // Read a message from the client
@@ -135,16 +196,18 @@ void* forward_msg(void* args) {
     // Remove the user if there's some error when trying to receive a message from it.
     if (user_info == NULL || strcmp(user_info->message, "quit") == 0) {
       // printf("Before removal:\n");
-      // printUsers();
+      // print_users();
       remove_user(user_socket_fd);
-      // printUsers();
+      // print_users();
       // printf("After removal:\n");
 
       // Close server's end of the socket.
       close(user_socket_fd);
       break;
     } else {
-      user_node_t* current = server_info->chat_users->first_user;
+      pthread_mutex_lock(&server_info_global_lock);
+      user_node_t* current = server_info_global->chat_users->first_user;
+      pthread_mutex_unlock(&server_info_global_lock);
 
       // Send message to all users.
       while (current != NULL) {
@@ -186,22 +249,32 @@ int main() {
   printf("Server listening on port %u\n", port);
 
   // Allocate space for server info.
-  server_info = (server_info_t *) malloc(sizeof(server_info_t));
+  server_info_global = (server_info_t *) malloc(sizeof(server_info_t));
 
   // Initialize fields for server info and the lock.
   user_list_t* users = (user_list_t*) malloc(sizeof(user_list_t));
   users->first_user = NULL;
   users->numUsers = 0;
-  server_info->chat_users = users; // PROB DON'T HAVE TO LOCK THIS YET THO B/C NO THREADS CREATED YET!
-  pthread_mutex_init(&server_info_lock, NULL);
+  server_info_global->chat_users = users;
+  pthread_mutex_init(&server_info_global_lock, NULL);
 
   // Continuously wait for a client to connect.
   while (true) {
+    pthread_mutex_lock(&server_info_global_lock);
+    printf("Num users: %d\n", server_info_global->chat_users->numUsers);
+    // Check if there are enough players connected to start the game.
+    if (server_info_global->chat_users->numUsers >= 2) {
+      // Create thread to start game.
+      pthread_t thread;
+      pthread_create(&thread, NULL, start_game, server_info_global);
+    }
+    pthread_mutex_unlock(&server_info_global_lock);
+
     // Accept connection from user.
     int client_socket_fd = server_socket_accept(server_socket_fd); // DO WE HAVE TO HAVE A LOCK FOR CHANGING FIELDS OF SERVER_INFO SINCE MULTIPLE THREADS WILL BE READING FROM & CHANGING IT...?
-    pthread_mutex_lock(&server_info_lock);
-    server_info->connecting_user_socket_fd = client_socket_fd;
-    pthread_mutex_unlock(&server_info_lock);
+    pthread_mutex_lock(&server_info_global_lock);
+    server_info_global->connecting_user_socket_fd = client_socket_fd;
+    pthread_mutex_unlock(&server_info_global_lock);
 
     // Create node for new user.
     user_node_t* newUser = malloc(sizeof(user_node_t));
@@ -209,7 +282,7 @@ int main() {
     newUser->next = NULL;
 
     // Add user to list of users.
-    pthread_mutex_lock(&server_info_lock);
+    pthread_mutex_lock(&server_info_global_lock);
 
     if (users->first_user == NULL) { // First connecting user
       users->first_user = newUser;
@@ -226,7 +299,7 @@ int main() {
 
     users->numUsers++;
 
-    pthread_mutex_unlock(&server_info_lock);
+    pthread_mutex_unlock(&server_info_global_lock);
 
     // Connection was unsuccessful.
     if (client_socket_fd == -1) {
@@ -235,13 +308,9 @@ int main() {
     }
 
     printf("Client connected!\n");
-
-    // Start thread for forwarding the newly connected user's messages to other users.
-    pthread_t thread;
-    pthread_create(&thread, NULL, forward_msg, server_info);
   }
 
-  free(server_info);
+  free(server_info_global);
   close(server_socket_fd);
 
   return 0;
