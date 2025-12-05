@@ -47,10 +47,10 @@ int send_message(int fd, user_info_t* user_info) {
     return -1;
   }
 
-  // Now we can send the message. Loop until the entire message has been written.
+  // Now we can send the username. Loop until the entire username has been written.
   bytes_written = 0;
   while (bytes_written < username_len) {
-    // Try to write the entire remaining message
+    // Try to write the entire remaining username
     ssize_t rc = write(fd, user_info->username + bytes_written, username_len - bytes_written);
 
     // Did the write fail? If so, return an error
