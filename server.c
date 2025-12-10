@@ -202,7 +202,7 @@ void* start_game(void* args) {
   server_start_asking_msg->username = strdup("Server");
   server_start_asking_msg->message = strdup("It is your turn to ask the host a Yes/No question about the secret word.");
 
-  rc = send_message(current->socket_fd, server_start_asking_msg);
+  rc = send_message(server_info_global->curr_asker->socket_fd, server_start_asking_msg);
 
   if (rc == -1) {
     // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
