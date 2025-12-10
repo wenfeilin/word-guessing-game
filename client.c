@@ -35,6 +35,9 @@ void* send_to_server (void* args) {
   has_sent_msg = false;
   pthread_mutex_unlock(&can_send_msg_lock);
 
+  printf("outside waiting area\n");
+
+
   // Get user input.
   while (getline(&line, &size, stdin)) {
     line[strlen(line) - 1] = '\0';
@@ -50,6 +53,8 @@ void* send_to_server (void* args) {
 
     // Send message to server.
     int rc = send_message(socket_fd, user_info);
+    printf("Sent msg to server\n");
+
     if (rc == -1) {
       perror("Failed to send message to server");
       close(socket_fd); // Close client's side of the socket connecting to server
