@@ -5,7 +5,6 @@
  * Structure to store the username of a user and the message a user is sending.
  */
 typedef struct user_info {
-  bool is_from_server;
   char* message;
   char* username;
 } user_info_t;
