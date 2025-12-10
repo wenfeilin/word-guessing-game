@@ -158,6 +158,10 @@ void* start_game(void* args) {
   // Receive the secret word from the host.
   user_info_t* user_info = receive_message(server_info->curr_host->socket_fd);
 
+  if (user_info == NULL) {
+    printf("user_info is NULL\n");
+  }
+
   // Send message to all players, signaling start of game.
   pthread_mutex_lock(&server_info_global_lock);
   user_node_t* current = server_info_global->chat_users->first_user;

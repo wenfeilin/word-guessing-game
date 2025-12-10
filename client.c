@@ -29,7 +29,7 @@ void* send_to_server (void* args) {
   
   pthread_mutex_lock(&can_send_msg_lock);
   while (has_sent_msg == false) {
-    // pthread_cond_wait(&can_send_msg, &can_send_msg_lock);
+    pthread_cond_wait(&can_send_msg, &can_send_msg_lock);
   }
 
   has_sent_msg = false;
@@ -96,9 +96,9 @@ void* read_from_server (void* args) {
     if (strcmp(user_info->username, "Server") == 0 && 
         (strcmp(user_info->message, "You are the host. Pick your secret word.") == 0 ||
         strcmp(user_info->message, "It is your turn to ask the host a Yes/No question about the secret word.") == 0)) {
-      // printf("we are here\n");
+      printf("we are here\n");
       has_sent_msg = true;
-      // pthread_cond_signal(&can_send_msg);
+      pthread_cond_signal(&can_send_msg);
     }
 
     // Display message from server.
