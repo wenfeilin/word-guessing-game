@@ -35,6 +35,9 @@ void* send_to_server (void* args) {
   has_sent_msg = false;
   pthread_mutex_unlock(&can_send_msg_lock);
 
+  printf("outside waiting area\n");
+
+
   // Get user input.
   while (getline(&line, &size, stdin)) {
     line[strlen(line) - 1] = '\0';
@@ -50,6 +53,8 @@ void* send_to_server (void* args) {
 
     // Send message to server.
     int rc = send_message(socket_fd, user_info);
+    printf("Sent msg to server\n");
+
     if (rc == -1) {
       perror("Failed to send message to server");
       close(socket_fd); // Close client's side of the socket connecting to server
@@ -90,15 +95,18 @@ void* read_from_server (void* args) {
 
     // Only be allowed to send message if picking the secret word as the host or when it's 
     // user's turn to ask question.
-    printf("should be true: %d\n", strcmp(user_info->username, "Server") == 0 && 
-        (strcmp(user_info->message, "You are the host. Pick your secret word.") == 0));
+    // printf("should be true: %d\n", strcmp(user_info->username, "Server") == 0 && 
+    //     (strcmp(user_info->message, "You are the host. Pick your secret word.") == 0));
 
     if (strcmp(user_info->username, "Server") == 0 && 
         (strcmp(user_info->message, "You are the host. Pick your secret word.") == 0 ||
         strcmp(user_info->message, "It is your turn to ask the host a Yes/No question about the secret word.") == 0)) {
       printf("we are here\n");
+
+      pthread_mutex_lock(&can_send_msg_lock);
       has_sent_msg = true;
-      pthread_cond_signal(&can_send_msg);
+      pthread_cond_broadcast(&can_send_msg); // wake up all threads
+      pthread_mutex_unlock(&can_send_msg_lock);
     }
 
     // Display message from server.
