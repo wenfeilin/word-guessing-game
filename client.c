@@ -27,12 +27,14 @@ void* send_to_server (void* args) {
   char* line = NULL;
   size_t size = 0;
   
+  // Make this player unable to send messages to the server (it won't go through) as long as the 
+  // server hasn't sent the player a message prompting them for input (a Y/N answer or question).
   pthread_mutex_lock(&can_send_msg_lock);
   while (has_sent_msg == false) {
     pthread_cond_wait(&can_send_msg, &can_send_msg_lock);
   }
 
-  has_sent_msg = false;
+  has_sent_msg = false; // Reset ability to send messages to server.
   pthread_mutex_unlock(&can_send_msg_lock);
 
   printf("outside waiting area\n");
@@ -93,16 +95,18 @@ void* read_from_server (void* args) {
       break;
     }
 
-    // Only be allowed to send message if picking the secret word as the host or when it's 
-    // user's turn to ask question.
     // printf("should be true: %d\n", strcmp(user_info->username, "Server") == 0 && 
     //     (strcmp(user_info->message, "You are the host. Pick your secret word.") == 0));
 
+    // Only be allowed to send message if picking the secret word as the host or when it's 
+    // user's turn to ask question.
     if (strcmp(user_info->username, "Server") == 0 && 
         (strcmp(user_info->message, "You are the host. Pick your secret word.") == 0 ||
-        strcmp(user_info->message, "It is your turn to ask the host a Yes/No question about the secret word.") == 0)) {
+        strcmp(user_info->message, "It is your turn to ask the host a Yes/No question about the secret word.") == 0 ||
+        strcmp(user_info->message, "It is time to make your guess for the secret word.") == 0)) {
       printf("we are here\n");
 
+      // Signal that this player is allowed to send messages to the server.
       pthread_mutex_lock(&can_send_msg_lock);
       has_sent_msg = true;
       pthread_cond_broadcast(&can_send_msg); // wake up all threads
