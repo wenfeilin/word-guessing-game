@@ -47,6 +47,8 @@ typedef struct server_info {
   bool guessed_secret_word;
   bool asker_updated;
   bool host_updated;
+  user_node_t* leading_player;
+  char* leading_username;
 } server_info_t;
 
 
@@ -263,17 +265,18 @@ void* forward_msg(void* args) {
   while (true) {
     // Read a message from the player.
     user_info_t* user_info = receive_message(user_socket_fd);
+    printf("message received from player: %s\n", user_info->message);
 
     // Validate the guesses received against the secret word (in guessing round).
     if (server_info->is_guessing) {
-      if (strcmp(user_info->message, server_info->secret_word) == 0) {
+      if (strcasecmp(user_info->message, server_info->secret_word) == 0) {
         pthread_mutex_lock(&server_info_global_lock);
         server_info_global->guessed_secret_word = true;
         server_info_global->is_guessing = false;
 
         user_node_t* current = server_info_global->chat_users->first_user;
 
-        char* rest_of_message = " is the winner";
+        char* rest_of_message = " is the winner of this round!";
         char *result = malloc(strlen(user_info->username) + strlen(rest_of_message) + 1);
         strcpy(result, user_info->username);
         strcat(result, rest_of_message);
@@ -298,13 +301,30 @@ void* forward_msg(void* args) {
             current->score++;
           }
 
+          if (current->score > server_info_global->leading_player->score) {
+            server_info_global->leading_player = current;
+            free(server_info_global->leading_username);
+            server_info_global->leading_username = strdup(user_info->username);
+          }
+
           current = current->next;
         }
 
         free(result);
 
         pthread_mutex_unlock(&server_info_global_lock);
+      } else {
+        user_info_t* server_try_again_msg = malloc(sizeof(user_info_t));
+        server_try_again_msg->username = strdup("Server");
+        server_try_again_msg->message = strdup("Wrong guess. Try again!");
 
+        int rc = send_message(user_socket_fd, server_try_again_msg);
+
+        if (rc == -1) {
+          // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
+          perror("Failed to send message to client");
+          exit(EXIT_FAILURE);
+        }
       }
     }
 
@@ -314,6 +334,7 @@ void* forward_msg(void* args) {
       pthread_mutex_lock(&server_info_global_lock);
       free(server_info_global->secret_word);
       server_info_global->secret_word = strdup(user_info->message);
+      printf("The secret word is %s\n", server_info_global->secret_word);
       pthread_mutex_unlock(&server_info_global_lock);
     }
 
@@ -342,11 +363,9 @@ void* forward_msg(void* args) {
       printf("value of is_receiving: %d\n", server_info_global->is_receiving_secret_word);
 
 
+      pthread_mutex_lock(&server_info_global_lock);
       // Only don't forward a user's message to all users if the message is the secret word.
       if (!server_info_global->is_receiving_secret_word && !server_info_global->is_guessing) {
-        pthread_mutex_lock(&server_info_global_lock);
-        server_info_global->is_receiving_secret_word = false;
-        pthread_mutex_unlock(&server_info_global_lock);
 
         // Send message to all users.
         while (current != NULL) {
@@ -361,7 +380,10 @@ void* forward_msg(void* args) {
 
           current = current->next;
         }
+      } else {
+        server_info_global->is_receiving_secret_word = false;
       }
+      pthread_mutex_unlock(&server_info_global_lock);
 
       // The current host should always be sending a Y/N answer.
       if (user_socket_fd == server_info->curr_host->socket_fd &&
@@ -392,16 +414,11 @@ void* forward_msg(void* args) {
         }
 
         server_info_global->asker_updated = true;
-        pthread_mutex_unlock(&server_info_global_lock);
 
 
-        // Update host after a certain number of questions have been asked and the next host hasn't 
-        // been a host yet.
         if (server_info_global->curr_question == server_info_global->max_questions /*&& 
             server_info_global->curr_host->next != NULL*/) {
-          pthread_mutex_lock(&server_info_global_lock);
           server_info_global->is_guessing = true;
-          pthread_mutex_unlock(&server_info_global_lock);
           // printf("value of is_guessing changed to true?: %d", server_info_global->is_guessing);
           
           user_info_t* server_start_guessing_msg = malloc(sizeof(user_info_t));
@@ -426,22 +443,26 @@ void* forward_msg(void* args) {
             current = current->next;
           }
         }
+        pthread_mutex_unlock(&server_info_global_lock);
 
 
         // printf("new asker: %d\n", server_info_global->curr_asker->socket_fd);
       }
 
+      pthread_mutex_lock(&server_info_global_lock);
       if (server_info_global->guessed_secret_word && 
           server_info_global->curr_host->next != NULL) {
         
-        // printf("(changing host 1): %d\n", server_info_global->curr_asker->socket_fd);
+        printf("(changing host 1): %d\n", server_info_global->curr_asker->socket_fd);
 
-        pthread_mutex_lock(&server_info_global_lock);
+        // pthread_mutex_lock(&server_info_global_lock);
         server_info_global->curr_host = server_info_global->curr_host->next;
         server_info_global->host_updated = true;
 
         // Signal that a secret word has to be selected (before the round begins).
         server_info_global->is_receiving_secret_word = true;
+        printf("(changing host 1): %d\n", server_info_global->curr_asker->socket_fd);
+
 
         server_info_global->curr_question = 0;
         server_info_global->guessed_secret_word = false;
@@ -467,8 +488,77 @@ void* forward_msg(void* args) {
         }
 
         server_info_global->asker_updated = true;
-        pthread_mutex_unlock(&server_info_global_lock);
+      } else if (server_info_global->guessed_secret_word && server_info_global->curr_host->next == NULL) { // done with game
+        // Print player's own score locally and the winner's score & username globally.
+        char* start_of_msg = "The game has ended.\n";
+        char* game_winner_msg = " is the winner of the game with ";
+        char* rest_of_msg = " points!\n";
+
+        int message_len = strlen(start_of_msg) + strlen(server_info_global->leading_username) + strlen(game_winner_msg) + sizeof(int) * 2 + strlen(rest_of_msg) + 1; // 1 = null char
+        char *buf = malloc(sizeof(char) * message_len);
+        snprintf(buf, message_len, "The game has ended.\n%s is the winner of the game with %d points!", server_info_global->leading_username, server_info_global->leading_player->score);
+
+        user_info_t * winner_of_game = malloc(sizeof(user_info_t));
+        winner_of_game->username = "Server";
+        winner_of_game->message = buf;
+
+        user_node_t* curr = server_info->chat_users->first_user;
+
+        while (curr != NULL) {
+          // Send message announcing game winner.
+          int rc = send_message(curr->socket_fd, winner_of_game);
+
+          if (rc == -1) {
+            // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
+            perror("Failed to send message to client");
+            exit(EXIT_FAILURE);
+          }
+
+          char* local_score_msg = "Your score: ";
+
+          int msg_len = strlen(local_score_msg) + sizeof(int) * 2 + 1; // 2 = number of digits for the score (random for now), 1 = null char
+          char *buf2 = malloc(sizeof(char) * msg_len);
+          snprintf(buf2, msg_len, "Your score: %d", curr->score);
+
+          user_info_t * own_score = malloc(sizeof(user_info_t));
+          own_score->username = "Server";
+          own_score->message = buf2;
+
+          // Send message showing own score.
+          rc = send_message(curr->socket_fd, own_score);
+          free(buf2);
+          free(own_score);
+
+          if (rc == -1) {
+            // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
+            perror("Failed to send message to client");
+            exit(EXIT_FAILURE);
+          }
+
+          // Kick everyone out.
+          close(curr->socket_fd);
+
+          curr = curr->next;
+        }
+
+        user_node_t* curr2 = server_info->chat_users->first_user;
+
+        while (curr2 != NULL) {
+          user_node_t *temp = curr2;
+          remove_user(curr2->socket_fd);
+          curr2 = temp->next;
+        }
+
+        free(buf);
+        free(winner_of_game);
+
+
+
+        // Free-ing memory.
+
+
       }
+      pthread_mutex_unlock(&server_info_global_lock);
 
       // pthread_mutex_unlock(&server_info_global_lock);
 
@@ -555,7 +645,7 @@ int main() {
   server_info_global->chat_users = users;
   server_info_global->is_game_initialized = false;
   server_info_global->curr_question = 0;
-  server_info_global->max_questions = 1;
+  server_info_global->max_questions = 4;
   server_info_global->is_receiving_secret_word = false;
   server_info_global->is_guessing = false;
   server_info_global->guessed_secret_word = false;
@@ -595,6 +685,8 @@ int main() {
 
     if (users->first_user == NULL) { // First connecting user
       users->first_user = newUser;
+      server_info_global->leading_player = newUser;
+      server_info_global->leading_username = malloc(sizeof(char));
     } else { // Subsequent connecting users
       user_node_t* current = users->first_user;
 

@@ -37,6 +37,8 @@ void* send_to_server (void* args) {
   has_sent_msg = false; // Reset ability to send messages to server.
   pthread_mutex_unlock(&can_send_msg_lock);
 
+  printf("\noutside waiting area (unlocked)\n");
+
   // Get user input.
   while (getline(&line, &size, stdin)) {
     line[strlen(line) - 1] = '\0';
@@ -52,6 +54,7 @@ void* send_to_server (void* args) {
 
     // Send message to server.
     int rc = send_message(socket_fd, user_info);
+    printf("Sent msg to server\n");
 
     if (rc == -1) {
       perror("Failed to send message to server");
@@ -100,6 +103,7 @@ void* read_from_server (void* args) {
         (strcmp(user_info->message, "You are the host. Pick your secret word.") == 0 ||
         strcmp(user_info->message, "It is your turn to ask the host a Yes/No question about the secret word.") == 0 ||
         strcmp(user_info->message, "It is time to make your guess for the secret word.") == 0)) {
+      printf("(Inside loop) trying to unlock\n");
 
       // Signal that this player is allowed to send messages to the server.
       pthread_mutex_lock(&can_send_msg_lock);
