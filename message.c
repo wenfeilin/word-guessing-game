@@ -64,7 +64,7 @@ int send_message(int fd, user_info_t* user_info) {
 }
 
 // Receive a message from a socket and return the message string (which must be freed later)
-user_info_t* receive_message(int fd) { // TO DO: send a struct to indicate whether msg is sent from server or not so we know whether to read once (from server) or twice (from other users)
+user_info_t* receive_message(int fd) {
   user_info_t* user_info = malloc(sizeof(user_info_t));
 
   // First try to read in the message length
