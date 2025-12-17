@@ -77,6 +77,26 @@ void* forward_msg(void* args);
 void remove_user(int user_to_delete_fd) {
   pthread_mutex_lock(&server_info_global_lock);
 
+  if (user_to_delete_fd == server_info_global->curr_asker->socket_fd) {
+  // Proceed to the next asker for question asking.
+      if (server_info_global->curr_asker->next != NULL) {
+        server_info_global->curr_asker = server_info_global->curr_asker->next;
+      } else {
+        server_info_global->curr_asker = server_info_global->chat_users->first_user;
+      }
+
+      // If everyone has asked their question (the asker loops back around to the host), 
+      // then begin the next round of asking, starting with the first asker of the previous round.
+      if (server_info_global->curr_asker->socket_fd == server_info_global->curr_host->socket_fd) {
+        if (server_info_global->curr_asker->next != NULL) {
+          server_info_global->curr_asker = server_info_global->curr_asker->next;
+        } else {
+          server_info_global->curr_asker = server_info_global->chat_users->first_user;
+        }
+      }
+
+  }
+
   // printf("Users left (before removal): %d\n", server_info_global->chat_users->numUsers);
 
   // Ensure the list of users isn't empty.
