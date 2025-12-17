@@ -49,6 +49,7 @@ typedef struct server_info {
   bool host_updated;
   user_node_t* leading_player;
   char* leading_username;
+  bool end_game;
 } server_info_t;
 
 
@@ -312,6 +313,10 @@ void* forward_msg(void* args) {
 
         free(result);
 
+        if (server_info_global->curr_host->next == NULL) {
+          server_info_global->end_game = true;
+        }
+
         pthread_mutex_unlock(&server_info_global_lock);
       } else {
         user_info_t* server_try_again_msg = malloc(sizeof(user_info_t));
@@ -327,6 +332,8 @@ void* forward_msg(void* args) {
         }
       }
     }
+
+    printf("(*) value of is_receiving should be true to save password: %d\n", server_info_global->is_receiving_secret_word);
 
     // Save the new secret word if the game is currently in the process of starting a new round w/ 
     // a new host.
@@ -358,14 +365,15 @@ void* forward_msg(void* args) {
       // printf("is msg received y or no?: %d\n", (strcmp(user_info->message, "y") == 0 || strcmp(user_info->message, "n") == 0));
 
       user_node_t* current = server_info->chat_users->first_user;
-
-      printf("value of is_guessing: %d\n", server_info_global->is_guessing);
-      printf("value of is_receiving: %d\n", server_info_global->is_receiving_secret_word);
-
+      
+      printf("(*) value of is_receiving before check: %d\n", server_info_global->is_receiving_secret_word);
+      printf("(*)Asker before check is %d\n", server_info_global->curr_asker->socket_fd);
+      printf("(*)Host before check is %d\n", server_info_global->curr_host->socket_fd);
+      printf("(*)Should be true: %d\n", ((user_socket_fd == server_info_global->curr_asker->socket_fd) || (user_socket_fd == server_info_global->curr_host->socket_fd)));
 
       pthread_mutex_lock(&server_info_global_lock);
       // Only don't forward a user's message to all users if the message is the secret word.
-      if (!server_info_global->is_receiving_secret_word && !server_info_global->is_guessing) {
+      if (!server_info_global->is_receiving_secret_word && !server_info_global->is_guessing && ((user_socket_fd == server_info_global->curr_asker->socket_fd) || (user_socket_fd == server_info_global->curr_host->socket_fd))) {
 
         // Send message to all users.
         while (current != NULL) {
@@ -380,16 +388,37 @@ void* forward_msg(void* args) {
 
           current = current->next;
         }
-      } else {
-        server_info_global->is_receiving_secret_word = false;
+      } 
+      
+      printf("value of is_guessing before check: %d\n", server_info_global->is_guessing);
+
+      if (!server_info_global->is_receiving_secret_word && !server_info_global->is_guessing && !server_info_global->end_game) {
+        if ((user_socket_fd != server_info_global->curr_asker->socket_fd) && (user_socket_fd != server_info_global->curr_host->socket_fd)) {
+          user_info_t* not_turn_msg = malloc(sizeof(user_info_t));
+          not_turn_msg->username = strdup("Server");
+          not_turn_msg->message = strdup("It is not your turn yet. Please wait.");
+
+          int rc = send_message(user_socket_fd, not_turn_msg);
+
+          if (rc == -1) {
+            perror("Failed to send message to client");
+            exit(EXIT_FAILURE);
+          }
+        }
       }
+
+      if (server_info_global->is_receiving_secret_word) {
+        server_info_global->is_receiving_secret_word = false;
+        printf("(*)changing IRSW to false\n");
+      }
+
       pthread_mutex_unlock(&server_info_global_lock);
 
       // The current host should always be sending a Y/N answer.
       if (user_socket_fd == server_info->curr_host->socket_fd &&
           (strcmp(user_info->message, "y") == 0 || strcmp(user_info->message, "n") == 0)) {
         // Change current asker
-        printf("Asker changed\n");
+        
 
         pthread_mutex_lock(&server_info_global_lock);
         // Update the number of questions the host has answered.
@@ -414,12 +443,13 @@ void* forward_msg(void* args) {
         }
 
         server_info_global->asker_updated = true;
+        printf("Asker changed to %d\n", server_info_global->curr_asker->socket_fd);
 
 
         if (server_info_global->curr_question == server_info_global->max_questions /*&& 
             server_info_global->curr_host->next != NULL*/) {
           server_info_global->is_guessing = true;
-          // printf("value of is_guessing changed to true?: %d", server_info_global->is_guessing);
+          printf("value of is_guessing changed to true: %d", server_info_global->is_guessing);
           
           user_info_t* server_start_guessing_msg = malloc(sizeof(user_info_t));
           server_start_guessing_msg->username = strdup("Server");
@@ -449,6 +479,7 @@ void* forward_msg(void* args) {
         // printf("new asker: %d\n", server_info_global->curr_asker->socket_fd);
       }
 
+      
       pthread_mutex_lock(&server_info_global_lock);
       if (server_info_global->guessed_secret_word && 
           server_info_global->curr_host->next != NULL) {
@@ -560,13 +591,15 @@ void* forward_msg(void* args) {
       }
       pthread_mutex_unlock(&server_info_global_lock);
 
+
+
       // pthread_mutex_unlock(&server_info_global_lock);
 
       // printf("is guessing?: %d\n", server_info_global->is_guessing);
-      // printf("is receiving secret word: %d\n", server_info_global->is_receiving_secret_word);
+      printf("!!is receiving secret word: %d\n", server_info_global->is_receiving_secret_word);
 
-      // printf("curr q: %d\n", server_info_global->curr_question);
-      // printf("is asker updated: %d\n", server_info_global->asker_updated);
+      printf("!!curr q: %d\n", server_info_global->curr_question);
+      printf("!!is asker updated: %d\n", server_info_global->asker_updated);
 
       pthread_mutex_lock(&server_info_global_lock);
       // Every time a player becomes the current asker, tell the player to send a question.
@@ -645,12 +678,14 @@ int main() {
   server_info_global->chat_users = users;
   server_info_global->is_game_initialized = false;
   server_info_global->curr_question = 0;
-  server_info_global->max_questions = 4;
+  server_info_global->max_questions = 1;
   server_info_global->is_receiving_secret_word = false;
   server_info_global->is_guessing = false;
   server_info_global->guessed_secret_word = false;
   server_info_global->asker_updated = false;
   server_info_global->host_updated = false;
+  server_info_global->end_game = false;
+
 
   pthread_mutex_init(&server_info_global_lock, NULL);
 
