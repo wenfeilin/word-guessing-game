@@ -73,17 +73,11 @@ void* read_from_server (void* args) {
     
     // If there is an error in receiving a message, ...
     if (user_info == NULL) {
-      // printf("Broke in read_from_server\n");
       break;
     }
 
     // Display message from server.
     printf("%s: %s\n", user_info->username, user_info->message);
-
-    // Free everything the message info.
-    free(user_info->username);
-    free(user_info->message);
-    free(user_info);
   }
   
   return NULL;
@@ -119,8 +113,5 @@ int main(int argc, char** argv) {
   pthread_join(read_message_thread, NULL);
 
   printf("Client should be closed now.\n");
-
-  // Maybe free stuff here and close user's end of the socket connecting to server?
-
   return 0;
 }
