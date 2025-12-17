@@ -94,10 +94,8 @@ void remove_user(int user_to_delete_fd) {
           server_info_global->curr_asker = server_info_global->chat_users->first_user;
         }
       }
-
   }
 
-  // printf("Users left (before removal): %d\n", server_info_global->chat_users->numUsers);
 
   // Ensure the list of users isn't empty.
   if (server_info_global->chat_users->first_user == NULL) {
@@ -141,25 +139,6 @@ void remove_user(int user_to_delete_fd) {
   // Decrement number of connected users.
   server_info_global->chat_users->numUsers--;
 
-  // printf("Users left (after removal): %d\n", server_info_global->chat_users->numUsers);
-
-  pthread_mutex_unlock(&server_info_global_lock);
-}
-
-/**
- * Print every connected users' file descriptor.
- */
-void print_users() {
-  pthread_mutex_lock(&server_info_global_lock);
-  // Loop through users list and print each one's file descriptor.
-  user_node_t * curr = server_info_global->chat_users->first_user;
-  int i = 1;
-  
-  while (curr != NULL) {
-    printf("User %d's fd: %d\n", i, curr->socket_fd);
-    i++;
-    curr = curr->next;
-  }
   pthread_mutex_unlock(&server_info_global_lock);
 }
 
@@ -262,8 +241,6 @@ void* start_game(void* args) {
     pthread_t forward_msg_thread;
     pthread_create(&forward_msg_thread, NULL, forward_msg, &curr->socket_fd);
 
-    // printf("Forward_msg thread created for socket %d\n", curr->socket_fd);
-
     curr = curr->next;
   }
   pthread_mutex_unlock(&server_info_global_lock);
@@ -310,7 +287,6 @@ void* forward_msg(void* args) {
         while (current != NULL) {
           // Announce to everyone the winner of this round (for the secret word).
           int rc = send_message(current->socket_fd, server_round_winner_msg);
-          // printf("Sending msg to other player\n");
 
           if (rc == -1) {
             // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
@@ -353,15 +329,12 @@ void* forward_msg(void* args) {
       }
     }
 
-    printf("(*) value of is_receiving should be true to save password: %d\n", server_info_global->is_receiving_secret_word);
-
     // Save the new secret word if the game is currently in the process of starting a new round w/ 
     // a new host.
     if (server_info->is_receiving_secret_word) {
       pthread_mutex_lock(&server_info_global_lock);
       free(server_info_global->secret_word);
       server_info_global->secret_word = strdup(user_info->message);
-      printf("The secret word is %s\n", server_info_global->secret_word);
       pthread_mutex_unlock(&server_info_global_lock);
     }
 
@@ -369,27 +342,15 @@ void* forward_msg(void* args) {
     // Remove the user if there's some error when trying to receive a message from it or 
     // the user is quitting the game.
     if (user_info == NULL || strcmp(user_info->message, "quit") == 0) {
-      // printf("Before removal:\n");
-      // print_users();
       remove_user(user_socket_fd);
-      // print_users();
-      // printf("After removal:\n");
-
+    
       // Close server's end of the socket.
       close(user_socket_fd);
       break;
     } else {
-      // printf("curr asker: %d\n", server_info->curr_asker->socket_fd);
-      // printf("received from host: %s\n", user_info->message);
-      // printf("is user the curr host?: %d\n", user_socket_fd == server_info->curr_host->socket_fd);
-      // printf("is msg received y or no?: %d\n", (strcmp(user_info->message, "y") == 0 || strcmp(user_info->message, "n") == 0));
 
       user_node_t* current = server_info->chat_users->first_user;
-      
-      printf("(*) value of is_receiving before check: %d\n", server_info_global->is_receiving_secret_word);
-      printf("(*)Asker before check is %d\n", server_info_global->curr_asker->socket_fd);
-      printf("(*)Host before check is %d\n", server_info_global->curr_host->socket_fd);
-      printf("(*)Should be true: %d\n", ((user_socket_fd == server_info_global->curr_asker->socket_fd) || (user_socket_fd == server_info_global->curr_host->socket_fd)));
+    
 
       pthread_mutex_lock(&server_info_global_lock);
       // Only don't forward a user's message to all users if the message is the secret word.
@@ -398,7 +359,6 @@ void* forward_msg(void* args) {
         // Send message to all users.
         while (current != NULL) {
           int rc = send_message(current->socket_fd, user_info);
-          // printf("Sending msg to other player\n");
 
           if (rc == -1) {
             // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
@@ -410,7 +370,6 @@ void* forward_msg(void* args) {
         }
       } 
       
-      printf("value of is_guessing before check: %d\n", server_info_global->is_guessing);
 
       if (!server_info_global->is_receiving_secret_word && !server_info_global->is_guessing && !server_info_global->end_game) {
         if ((user_socket_fd != server_info_global->curr_asker->socket_fd) && (user_socket_fd != server_info_global->curr_host->socket_fd)) {
@@ -429,7 +388,6 @@ void* forward_msg(void* args) {
 
       if (server_info_global->is_receiving_secret_word) {
         server_info_global->is_receiving_secret_word = false;
-        printf("(*)changing IRSW to false\n");
       }
 
       pthread_mutex_unlock(&server_info_global_lock);
@@ -438,12 +396,10 @@ void* forward_msg(void* args) {
       if (user_socket_fd == server_info->curr_host->socket_fd &&
           (strcmp(user_info->message, "y") == 0 || strcmp(user_info->message, "n") == 0)) {
         // Change current asker
-        
-
+      
         pthread_mutex_lock(&server_info_global_lock);
         // Update the number of questions the host has answered.
         server_info_global->curr_question++;
-        // printf("curr questions: %d\n", server_info_global->curr_question);
 
         // Proceed to the next asker for question asking.
         if (server_info_global->curr_asker->next != NULL) {
@@ -463,13 +419,11 @@ void* forward_msg(void* args) {
         }
 
         server_info_global->asker_updated = true;
-        printf("Asker changed to %d\n", server_info_global->curr_asker->socket_fd);
 
 
         if (server_info_global->curr_question == server_info_global->max_questions /*&& 
             server_info_global->curr_host->next != NULL*/) {
           server_info_global->is_guessing = true;
-          printf("value of is_guessing changed to true: %d", server_info_global->is_guessing);
           
           user_info_t* server_start_guessing_msg = malloc(sizeof(user_info_t));
           server_start_guessing_msg->username = strdup("Server");
@@ -481,7 +435,6 @@ void* forward_msg(void* args) {
           while (current != NULL) {
             if (current != server_info->curr_host) {
               int rc = send_message(current->socket_fd, server_start_guessing_msg);
-              // printf("Sending msg to other player\n");
 
               if (rc == -1) {
                 // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
@@ -494,43 +447,31 @@ void* forward_msg(void* args) {
           }
         }
         pthread_mutex_unlock(&server_info_global_lock);
-
-
-        // printf("new asker: %d\n", server_info_global->curr_asker->socket_fd);
       }
 
       
       pthread_mutex_lock(&server_info_global_lock);
       if (server_info_global->guessed_secret_word && 
           server_info_global->curr_host->next != NULL) {
-        
-        printf("(changing host 1): %d\n", server_info_global->curr_asker->socket_fd);
-
         // pthread_mutex_lock(&server_info_global_lock);
         server_info_global->curr_host = server_info_global->curr_host->next;
         server_info_global->host_updated = true;
 
         // Signal that a secret word has to be selected (before the round begins).
         server_info_global->is_receiving_secret_word = true;
-        printf("(changing host 1): %d\n", server_info_global->curr_asker->socket_fd);
-
-
         server_info_global->curr_question = 0;
         server_info_global->guessed_secret_word = false;
 
         // Proceed to the next asker for question asking.
         if (server_info_global->curr_asker->next != NULL) {
           server_info_global->curr_asker = server_info_global->curr_asker->next;
-          // printf("(changing host 2): %d\n", server_info_global->curr_asker->socket_fd);
         } else {
           server_info_global->curr_asker = server_info_global->chat_users->first_user;
-          // printf("(changing host 3): %d\n", server_info_global->curr_asker->socket_fd);
         }
 
         // If everyone has asked their question (the asker loops back around to the host), 
         // then begin the next round of asking, starting with the first asker of the previous round.
         if (server_info_global->curr_asker->socket_fd == server_info_global->curr_host->socket_fd) {
-          // printf("(changing host 4): %d\n", server_info_global->curr_asker->socket_fd);
           if (server_info_global->curr_asker->next != NULL) {
             server_info_global->curr_asker = server_info_global->curr_asker->next;
           } else {
@@ -609,19 +550,7 @@ void* forward_msg(void* args) {
 
 
       }
-      pthread_mutex_unlock(&server_info_global_lock);
-
-
-
-      // pthread_mutex_unlock(&server_info_global_lock);
-
-      // printf("is guessing?: %d\n", server_info_global->is_guessing);
-      printf("!!is receiving secret word: %d\n", server_info_global->is_receiving_secret_word);
-
-      printf("!!curr q: %d\n", server_info_global->curr_question);
-      printf("!!is asker updated: %d\n", server_info_global->asker_updated);
-
-      pthread_mutex_lock(&server_info_global_lock);
+      
       // Every time a player becomes the current asker, tell the player to send a question.
       if (server_info_global->asker_updated && (server_info->curr_question < server_info->max_questions) && !server_info_global->is_receiving_secret_word) {
         user_info_t* server_start_asking_msg = malloc(sizeof(user_info_t));
@@ -639,7 +568,6 @@ void* forward_msg(void* args) {
         server_info_global->asker_updated = false;
       }
 
-      // printf("host updated (before if check): %d\n", server_info_global->host_updated);
       // Every time a player becomes the new host, tell the player to set a secret word.
       if (server_info_global->host_updated) {
         user_info_t* server_pick_secret_msg = malloc(sizeof(user_info_t));
@@ -649,7 +577,6 @@ void* forward_msg(void* args) {
         int rc = send_message(server_info_global->curr_host->socket_fd, server_pick_secret_msg);
 
         if (rc == -1) {
-          // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
           perror("Failed to send message to client");
           exit(EXIT_FAILURE);
         }
@@ -660,13 +587,8 @@ void* forward_msg(void* args) {
 
       // Update the local copy to be equal to current state of global game state.
       server_info = server_info_global;
-      // Free the message string
-      // free(server_info->message);
-      // free(server_info);
     }
   }
-
-  // pthread_mutex_unlock(&server_info_global_lock);
 
   return NULL;
 } 
@@ -712,21 +634,32 @@ int main() {
   // Continuously wait for a client to connect.
   while (true) {
     pthread_mutex_lock(&server_info_global_lock);
-    printf("Num users: %d\n", server_info_global->chat_users->numUsers);
     // Check if there are enough players connected to start the game.
-    if (server_info_global->chat_users->numUsers >= 2 && !server_info_global->is_game_initialized) { // NOTE: Does this create another thread for start_game? Might need a boolean to indicate game started so thread doesn't get created again
+    if (server_info_global->chat_users->numUsers >= 2 && !server_info_global->is_game_initialized) { 
       server_info_global->is_game_initialized = true;
       // Create thread to start game.
       pthread_t thread;
-      printf("Started game thread\n");
       pthread_create(&thread, NULL, start_game, server_info_global);
     }
     pthread_mutex_unlock(&server_info_global_lock);
 
     // Accept connection from user.
-    int client_socket_fd = server_socket_accept(server_socket_fd); // DO WE HAVE TO HAVE A LOCK FOR CHANGING FIELDS OF SERVER_INFO SINCE MULTIPLE THREADS WILL BE READING FROM & CHANGING IT...?
+    int client_socket_fd = server_socket_accept(server_socket_fd); 
     pthread_mutex_lock(&server_info_global_lock);
     server_info_global->connecting_user_socket_fd = client_socket_fd;
+
+    user_info_t* welcome_msg = malloc(sizeof(user_info_t));
+    welcome_msg->username = strdup("Server");
+    welcome_msg->message = strdup("Welcome to the Guessing Secret Word game!\n Each player will take turn to be the host and pick a secret word.\n Other players will take turn to ask yes/no questions to guess the secret word.\n Whoever makes the most correct guesses will be the winner!\n");
+
+    // Send a message to the first host to pick a secret word.
+    int rc = send_message(client_socket_fd, welcome_msg);
+
+    if (rc == -1) {
+      perror("Failed to send message to client");
+      exit(EXIT_FAILURE);
+    }
+
     pthread_mutex_unlock(&server_info_global_lock);
 
     // Create node for new user.
