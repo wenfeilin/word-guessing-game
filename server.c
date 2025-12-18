@@ -550,20 +550,6 @@ void* forward_msg(void* args) {
     // Read a message from the player.
     user_info_t* user_info = receive_message(user_socket_fd);
 
-    // Validate the guesses received against the secret word (in guessing round).
-    if (server_info->is_guessing) {
-      validate_guesses(server_info, user_info, user_socket_fd);
-    }
-
-    // Save the new secret word if the game is currently in the process of starting a new round w/ 
-    // a new host.
-    if (server_info->is_receiving_secret_word) {
-      pthread_mutex_lock(&server_info_global_lock);
-      free(server_info_global->secret_word);
-      server_info_global->secret_word = strdup(user_info->message);
-      pthread_mutex_unlock(&server_info_global_lock);
-    }
-
     // Remove the user if there's some error when trying to receive a message from it or 
     // the user is quitting the game.
     if (user_info == NULL || strcmp(user_info->message, "quit") == 0) {
@@ -572,6 +558,20 @@ void* forward_msg(void* args) {
       close(user_socket_fd);
       break;
     } else {
+      // Validate the guesses received against the secret word (in guessing round).
+      if (server_info->is_guessing) {
+        validate_guesses(server_info, user_info, user_socket_fd);
+      }
+
+      // Save the new secret word if the game is currently in the process of starting a new round w/ 
+      // a new host.
+      if (server_info->is_receiving_secret_word) {
+        pthread_mutex_lock(&server_info_global_lock);
+        free(server_info_global->secret_word);
+        server_info_global->secret_word = strdup(user_info->message);
+        pthread_mutex_unlock(&server_info_global_lock);
+      }
+
       user_node_t* current = server_info->chat_users->first_user;
       pthread_mutex_lock(&server_info_global_lock);
       // Only don't forward a user's message to all users if the message is the secret word.
