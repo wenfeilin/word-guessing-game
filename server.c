@@ -340,6 +340,7 @@ void validate_guesses(server_info_t* server_info, user_info_t* user_info, int us
     user_info_t* server_round_winner_msg = malloc(sizeof(user_info_t));
     server_round_winner_msg->username = strdup("Server");
     server_round_winner_msg->message = strdup(result);
+    free(result);
 
     // Calculate new scores.
     while (current != NULL) {
@@ -365,11 +366,13 @@ void validate_guesses(server_info_t* server_info, user_info_t* user_info, int us
       current = current->next;
     }
 
-    free(result);
-
     if (server_info_global->curr_host->next == NULL) {
       server_info_global->end_game = true;
     }
+
+    free(server_round_winner_msg->username);
+    free(server_round_winner_msg->message);
+    free(server_round_winner_msg);
 
     pthread_mutex_unlock(&server_info_global_lock);
   } else {
@@ -384,15 +387,12 @@ void validate_guesses(server_info_t* server_info, user_info_t* user_info, int us
       perror("Failed to send message to client");
       exit(EXIT_FAILURE);
     }
+
+    free(server_try_again_msg->username);
+    free(server_try_again_msg->message);
+    free(server_try_again_msg);
   }
 }
-
-
-
-
-
-
-
 
 /**
  * Thread Worker Functions (Core Functions)
@@ -421,6 +421,10 @@ void* start_game(void* args) {
     perror("Failed to send message to client");
     exit(EXIT_FAILURE);
   }
+
+  free(server_pick_secret_msg->username);
+  free(server_pick_secret_msg->message);
+  free(server_pick_secret_msg);
 
   // Receive the secret word from the host.
   pthread_mutex_lock(&server_info_global_lock);
@@ -453,6 +457,10 @@ void* start_game(void* args) {
     
     pthread_mutex_unlock(&server_info_global_lock);
   }
+
+  free(server_start_game_msg->username);
+  free(server_start_game_msg->message);
+  free(server_start_game_msg);
   
   // Save the secret word.
   pthread_mutex_lock(&server_info_global_lock);
@@ -460,6 +468,10 @@ void* start_game(void* args) {
 
   printf("The secret word is %s\n", server_info_global->secret_word);
   pthread_mutex_unlock(&server_info_global_lock);
+
+  free(user_info->username);
+  free(user_info->message);
+  free(user_info);
 
 
   // Set the first asker (as the next player after the host in the linked list).
@@ -483,6 +495,10 @@ void* start_game(void* args) {
     perror("Failed to send message to client");
     exit(EXIT_FAILURE);
   }
+
+  free(server_start_asking_msg->username);
+  free(server_start_asking_msg->message);
+  free(server_start_asking_msg);
   
 
   // Loop through list of players and create a thread for each so that they can start communicating w/ e/o.
@@ -536,7 +552,6 @@ void* forward_msg(void* args) {
     // the user is quitting the game.
     if (user_info == NULL || strcmp(user_info->message, "quit") == 0) {
       remove_user(user_socket_fd);
-    
       // Close server's end of the socket.
       close(user_socket_fd);
       break;
@@ -576,6 +591,10 @@ void* forward_msg(void* args) {
             perror("Failed to send message to client");
             exit(EXIT_FAILURE);
           }
+
+          free(not_turn_msg->username);
+          free(not_turn_msg->message);
+          free(not_turn_msg);
         }
       }
 
@@ -623,11 +642,18 @@ void* forward_msg(void* args) {
 
             current = current->next;
           }
+
+          free(server_start_guessing_msg->username);
+          free(server_start_guessing_msg->message);
+          free(server_start_guessing_msg);
         }
         pthread_mutex_unlock(&server_info_global_lock);
       }
 
-      
+      free(user_info->username);
+      free(user_info->message);
+      free(user_info);
+
       pthread_mutex_lock(&server_info_global_lock);
       if (server_info_global->guessed_secret_word && 
           server_info_global->curr_host->next != NULL) {
@@ -651,6 +677,10 @@ void* forward_msg(void* args) {
           exit(EXIT_FAILURE);
         }
 
+        free(server_start_asking_msg->message);
+        free(server_start_asking_msg->username);
+        free(server_start_asking_msg);
+
         server_info_global->asker_updated = false;
       }
 
@@ -666,6 +696,10 @@ void* forward_msg(void* args) {
           perror("Failed to send message to client");
           exit(EXIT_FAILURE);
         }
+
+        free(server_pick_secret_msg->username);
+        free(server_pick_secret_msg->message);
+        free(server_pick_secret_msg);
 
         server_info_global->host_updated = false;
       }
@@ -746,6 +780,10 @@ int main() {
       exit(EXIT_FAILURE);
     }
 
+    free(welcome_msg->username);
+    free(welcome_msg->message);
+    free(welcome_msg);
+
     pthread_mutex_unlock(&server_info_global_lock);
 
     // Create node for new user.
@@ -766,6 +804,17 @@ int main() {
     printf("Client connected!\n");
   }
 
+  // Traversing through the users linked list to free each node 
+  user_node_t* current = server_info_global->chat_users->first_user;
+  while (current != NULL) {
+    user_node_t* temp = current->next;
+    free(current);
+    current = temp;
+  }
+
+  free(server_info_global->chat_users); // Freeing the linked list
+  free(server_info_global->secret_word); // Freeing secret word
+  free(server_info_global->leading_username); // Freeing leading user name
   free(server_info_global);
   close(server_socket_fd);
 

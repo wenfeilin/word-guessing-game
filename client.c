@@ -42,11 +42,16 @@ void* send_to_server (void* args) {
       exit(EXIT_FAILURE);
     }
 
+    free(user_info->username);
+    free(user_info->message);
+    free(user_info);
+
     if (strcmp(line, "quit") == 0) { // Prompt to quit program.
       break;
     }
   }
 
+  free(line);
   return NULL;
 }
 
