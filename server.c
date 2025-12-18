@@ -735,8 +735,9 @@ int main() {
   // Traversing through the users linked list to free each node 
   user_node_t* current = server_info_global->chat_users->first_user;
   while (current != NULL) {
+    user_node_t* temp = current->next;
     free(current);
-    current = current->next;
+    current = temp;
   }
 
   free(server_info_global->chat_users); // Freeing the linked list

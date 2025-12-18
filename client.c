@@ -45,6 +45,10 @@ void* send_to_server (void* args) {
       exit(EXIT_FAILURE);
     }
 
+    free(user_info->username);
+    free(user_info->message);
+    free(user_info);
+
     if (strcmp(line, "quit") == 0) { // Prompt to quit program
       // printf("Broke in send_to_server\n");
       break;
@@ -53,7 +57,7 @@ void* send_to_server (void* args) {
 
   close(socket_fd);
   printf("Socket is closed.\n");
-
+  free(line);
   return NULL;
 }
 
@@ -78,6 +82,10 @@ void* read_from_server (void* args) {
 
     // Display message from server.
     printf("%s: %s\n", user_info->username, user_info->message);
+
+    free(user_info->username);
+    free(user_info->message);
+    free(user_info);
   }
   
   return NULL;
