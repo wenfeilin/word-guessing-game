@@ -25,7 +25,7 @@ $ make
 $ ./server
   Server running on port [port-number]
 
-# 3. For each player, in a separate terminal, run the client by using the port number outputted from runner the server.
+# 3. For each player, in a separate terminal, run the client by using the port number outputted from running the server.
 $ ./client [username] localhost [port-number]
   [Welcome message with game instructions]
 ```
