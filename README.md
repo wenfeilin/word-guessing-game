@@ -1,43 +1,58 @@
-ReadMe file for CSC213 Project: Word Guessing Game.
-Created by Linh Vu, Wenfei Lin, & Connor Durkin. 
-Last updated on December 17 2025.
+# Word Guessing Game
 
--- GAME BASICS --
+Created by Linh Vu, Wenfei Lin, & Connor Durkin. 
+Last updated on December 17, 2025.
+
+## Game Basics
+
 The basic idea of the game is to correctly guess a secret word that has been set by another player. Once a guess matches the secret word, the player that guessed correctly receives 1 point. The player with the most points at the end of the game is the winner. 
 
-Players swap between 2 roles: (1) Host: Inputs a secret word for other players to guess. (2) Guesser: Inputs questions and guesses about the secret word.
+Players swap between 2 roles: 
+- Host: Inputs a secret word for other players to guess. 
+- Guesser: Inputs questions and guesses about the secret word.
 
-Every game consists of 2 phases: (1) QnA Rounds: Each player will ask the host a question about the secret word. Other players cannot ask a question until it is their turn. The host will answer each question with a yes or no. (2) Guessing Free-For-All: All players can input their guesses for the secret word in a free-for-all.
+Every game consists of 2 phases: 
+- QnA Rounds: Each player will ask the host a question about the secret word. Other players cannot ask a question until it is their turn. The host will answer each question with a yes or no.
+- Guessing Free-For-All: All players can input their guesses for the secret word in a free-for-all.
 
--- INSTRUCTIONS --
-Note that we are using the term "clients" interchangeably with "players," the former being the more technical term.
+## How to Run
 
-(1) Run makefile.
+```
+# 1. Make the project.
+$ make
 
-Input: make
-Output: 
+# 2. In a separate terminal, run the server.
+$ ./server
+  Server running on port [port-number]
 
-(2) Establish the server.
+# 3. For each player, in a separate terminal, run the client by using the port number outputted from runner the server.
+$ ./client [username] localhost [port-number]
+  # Welcome message with game instructions should appear upon connecting to the server.
+```
 
-Input: ./server localhost
-Output: 
+## How to Play
+Once 2 players have been connected, the game will automatically start, and the player that joined first will become the host.
 
-(3) Connect the clients to the server. Once 2 clients have been connected, the game will automatically start, and the first client will become the host.
-
-Input: ./server user1 localhost ...
-Output: 
-
-(4) Set the secret word from the terminal window of the host. This will establish the secret word that is to be guessed during the first part of the game.
+For each round:
+1. The host first sets the secret word. This will be the word that the rest of the players try to guess after asking questions about it.
 
 Input: meep
 Output (message from server): 
 
-(5) The QnA round will begin. Clients will ask, in the order that they connected to the sever, a question about the secret word. So, in each client terminal, you will be prompted to enter a question, and then you will switch over to the host terminal and answer the questions one-by-one. Be sure to ask a question that can be answered with yes/no as the host can only respond with yes/no. When it's not a client's turn to ask a question, they cannot send a message, and so you have to ask a question from the appropriate client terminal. There will be messages from the server to guide you along this process.
+2. The QnA round then begins. All other players will ask, taking turns in the order that they connected to the sever, a question about the secret word. After a player asks the host a yes/no question, the host should respond with yes or no. If it's not a player's turn to ask a question, their question won't be sent to everyone else, and the server will indicate that.
 
 Input: 
 Output (message from server): 
 
-(6) The guessing free-for-all will begin. Clients can enter in their guesses in any order. The guess will be checked against the secret word in a case-insensitive manner. Once a guess matches the secret word, the client who guessed correctly will receive 1 point. Then the game moves onto the next part, so the host switches to the following client, and then they select another secret word, and the game continues onward until all clients have been the host.
 
+Note: 
+
+3. After some of questions is asked (defined by the variable `max_questions`), the guessing free-for-all will begin. Players can enter in their guesses in any order. The guess will be checked against the secret word in a case-insensitive manner. Once a guess matches the secret word, the player who guessed correctly will receive 1 point. Then, the round ends, so the host switches to the next player. The new host selects a secret word, and the game continues onward until all players have been the host once.
+
+Input: 
+Output (message from server): 
+
+4. Once the game ends, the final winner of the game is announced, and each player receives their individual score privately.
+ 
 Input: 
 Output (message from server): 
