@@ -117,7 +117,5 @@ int main(int argc, char** argv) {
 
   // Close the socket.
   close(socket_fd);
-  printf("Client should be closed now.\n");
-
   return 0;
 }

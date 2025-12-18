@@ -109,7 +109,7 @@ void remove_user(int user_to_delete_fd) {
   // deleting elsewhere.
   // Source:https://www.geeksforgeeks.org/c/c-program-for-deleting-a-node-in-a-linked-list/
 
-   // Store head node.
+  // Store head node.
   user_node_t *temp = server_info_global->chat_users->first_user, *prev;
 
   // Case 1: Deleting the first user.
@@ -259,9 +259,11 @@ void end_game(server_info_t* server_info) {
   char* rest_of_msg = " points!\n";
 
   // NOTE: We are assuming that the total points will be no more than 2 digits long.
-  int message_len = strlen(start_of_msg) + strlen(server_info_global->leading_username) + strlen(game_winner_msg) + sizeof(int) * 2 + strlen(rest_of_msg) + 1;
+  int message_len = strlen(start_of_msg) + strlen(server_info_global->leading_username) + 
+                    strlen(game_winner_msg) + sizeof(int) * 2 + strlen(rest_of_msg) + 1;
   char *buf = malloc(sizeof(char) * message_len);
-  snprintf(buf, message_len, "The game has ended.\n%s is the winner of the game with %d points!", server_info_global->leading_username, server_info_global->leading_player->score);
+  snprintf(buf, message_len, "The game has ended.\n%s is the winner of the game with %d points!", 
+           server_info_global->leading_username, server_info_global->leading_player->score);
 
   user_info_t * winner_of_game = malloc(sizeof(user_info_t));
   winner_of_game->username = "Server";
@@ -274,7 +276,6 @@ void end_game(server_info_t* server_info) {
     int rc = send_message(curr->socket_fd, winner_of_game);
 
     if (rc == -1) {
-      // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
       perror("Failed to send message to client");
       exit(EXIT_FAILURE);
     }
@@ -282,7 +283,7 @@ void end_game(server_info_t* server_info) {
     // Create the message showing the player's own score.
     // NOTE: We are assuming that the total points will be no more than 2 digits long.
     char* local_score_msg = "Your score: ";
-    int msg_len = strlen(local_score_msg) + sizeof(int) * 2 + 1; // 2 = number of digits for the score (random for now), 1 = null char
+    int msg_len = strlen(local_score_msg) + sizeof(int) * 2 + 1;
     char *buf2 = malloc(sizeof(char) * msg_len);
     snprintf(buf2, msg_len, "Your score: %d", curr->score);
 
@@ -296,7 +297,6 @@ void end_game(server_info_t* server_info) {
     free(own_score);
 
     if (rc == -1) {
-      // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
       perror("Failed to send message to client");
       exit(EXIT_FAILURE);
     }
@@ -448,9 +448,7 @@ void* start_game(void* args) {
   pthread_mutex_unlock(&server_info_global_lock);
 
   // Receive the secret word from the host.
-  // pthread_mutex_lock(&server_info_global_lock);
   user_info_t* user_info = receive_message(server_info_local->curr_host->socket_fd);
-  // pthread_mutex_unlock(&server_info_global_lock);
 
   // Send message to all players, except the host, signaling the start of the game.
   pthread_mutex_lock(&server_info_global_lock);
@@ -459,14 +457,14 @@ void* start_game(void* args) {
 
   user_info_t* server_start_game_msg = malloc(sizeof(user_info_t));
   server_start_game_msg->username = strdup("Server");
-  server_start_game_msg->message = strdup("The game has started. Wait for your turn to ask a question about the secret word.");
+  server_start_game_msg->message = strdup("The game has started. Wait for your turn to ask a "
+                                          "question about the secret word.");
 
   // Tell non-host players that the game has started and to wait for their turn to ask the host 
   // a question.
   while (current != NULL) {
     pthread_mutex_lock(&server_info_global_lock);
     if (current->socket_fd != server_info_global->curr_host->socket_fd) {
-
       int rc = send_message(current->socket_fd, server_start_game_msg);
 
       if (rc == -1) {
@@ -492,24 +490,22 @@ void* start_game(void* args) {
   free(user_info->message);
   free(user_info);
 
-
   // Set the first asker (as the next player after the host in the linked list).
   pthread_mutex_lock(&server_info_global_lock);
   server_info_global->curr_asker = server_info_global->curr_host->next;
   pthread_mutex_unlock(&server_info_global_lock);
 
-
   // Tell current asker to send a question.
   user_info_t* server_start_asking_msg = malloc(sizeof(user_info_t));
   server_start_asking_msg->username = strdup("Server");
-  server_start_asking_msg->message = strdup("It is your turn to ask the host a Yes/No question about the secret word.");
+  server_start_asking_msg->message = strdup("It is your turn to ask the host a Yes/No question "
+                                            "about the secret word.");
 
   pthread_mutex_lock(&server_info_global_lock);
   rc = send_message(server_info_global->curr_asker->socket_fd, server_start_asking_msg);
   pthread_mutex_unlock(&server_info_global_lock);
 
   if (rc == -1) {
-    // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
     perror("Failed to send message to client");
     exit(EXIT_FAILURE);
   }
@@ -575,13 +571,14 @@ void* forward_msg(void* args) {
       user_node_t* current = server_info->chat_users->first_user;
       pthread_mutex_lock(&server_info_global_lock);
       // Only don't forward a user's message to all users if the message is the secret word.
-      if (!server_info_global->is_receiving_secret_word && !server_info_global->is_guessing && ((user_socket_fd == server_info_global->curr_asker->socket_fd) || (user_socket_fd == server_info_global->curr_host->socket_fd))) {
+      if (!server_info_global->is_receiving_secret_word && !server_info_global->is_guessing && 
+          ((user_socket_fd == server_info_global->curr_asker->socket_fd) || 
+           (user_socket_fd == server_info_global->curr_host->socket_fd))) {
         // Forward the message to everyone.
         while (current != NULL) {
           int rc = send_message(current->socket_fd, user_info);
 
           if (rc == -1) {
-            // remove_user(user_socket_fd); // DO WE WANT TO REMOVE USER IF SENDING FAILS OR DO STH ELSE?
             perror("Failed to send message to client");
             exit(EXIT_FAILURE);
           }
@@ -591,8 +588,10 @@ void* forward_msg(void* args) {
       } 
       
       // Tell users that try to send messages when it's not their turn to wait.
-      if (!server_info_global->is_receiving_secret_word && !server_info_global->is_guessing && !server_info_global->end_game) {
-        if ((user_socket_fd != server_info_global->curr_asker->socket_fd) && (user_socket_fd != server_info_global->curr_host->socket_fd)) {
+      if (!server_info_global->is_receiving_secret_word && !server_info_global->is_guessing && 
+          !server_info_global->end_game) {
+        if ((user_socket_fd != server_info_global->curr_asker->socket_fd) && 
+            (user_socket_fd != server_info_global->curr_host->socket_fd)) {
           user_info_t* not_turn_msg = malloc(sizeof(user_info_t));
           not_turn_msg->username = strdup("Server");
           not_turn_msg->message = strdup("It is not your turn yet. Please wait.");
@@ -638,7 +637,8 @@ void* forward_msg(void* args) {
           
           user_info_t* server_start_guessing_msg = malloc(sizeof(user_info_t));
           server_start_guessing_msg->username = strdup("Server");
-          server_start_guessing_msg->message = strdup("It is time to make your guess for the secret word.");
+          server_start_guessing_msg->message = strdup("It is time to make your guess for the "
+                                                      "secret word.");
 
           user_node_t* current = server_info->chat_users->first_user;
 
@@ -675,17 +675,21 @@ void* forward_msg(void* args) {
         // Update the host and first guesser of the next round, and get ready to read in the next
         // secret word.
         set_up_for_next_round();
-      } else if (server_info_global->guessed_secret_word && server_info_global->curr_host->next == NULL) { // Done with the game.
+      } else if (server_info_global->guessed_secret_word && 
+                 server_info_global->curr_host->next == NULL) { // Done with the game.
         // Announce the winner of the game, print each player's score privately, and disconenct
         // everyone at the end.
         end_game(server_info);
       }
       
       // Every time a player becomes the current asker, tell the player to send a question.
-      if (server_info_global->asker_updated && (server_info->curr_question < server_info->max_questions) && !server_info_global->is_receiving_secret_word) {
+      if (server_info_global->asker_updated && 
+          (server_info->curr_question < server_info->max_questions) && 
+          !server_info_global->is_receiving_secret_word) {
         user_info_t* server_start_asking_msg = malloc(sizeof(user_info_t));
         server_start_asking_msg->username = strdup("Server");
-        server_start_asking_msg->message = strdup("It is your turn to ask the host a Yes/No question about the secret word.");
+        server_start_asking_msg->message = strdup("It is your turn to ask the host a Yes/No "
+                                                  "question about the secret word.");
 
         int rc = send_message(server_info_global->curr_asker->socket_fd, server_start_asking_msg);
 
@@ -732,12 +736,20 @@ void* forward_msg(void* args) {
   return NULL;
 } 
 
-
+/**
+ * Send welcome message with the game instructions to the new user.
+ * 
+ * \param args The socket file descriptor of the new user.
+ */
 void* welcome(void* args) {
   int client_socket_fd = *(int*)args;
+
   user_info_t* welcome_msg = malloc(sizeof(user_info_t));
   welcome_msg->username = strdup("Server");
-  welcome_msg->message = strdup("Welcome to the Guessing Secret Word game!\n Each player will take turn to be the host and pick a secret word.\n Other players will take turn to ask yes/no questions to guess the secret word.\n Whoever makes the most correct guesses will be the winner!\n");
+  welcome_msg->message = strdup("Welcome to the Guessing Secret Word game!\n Each player will "
+    "take turn to be the host and pick a secret word.\n Other players will take turn to ask "
+    "yes/no questions to guess the secret word.\n Whoever makes the most correct guesses will "
+    "be the winner!\n");
 
   // Send a message to the first host to pick a secret word.
   int rc = send_message(client_socket_fd, welcome_msg);
@@ -813,6 +825,7 @@ int main() {
     // Remember the socket fd of who just connected to use later.
     server_info_global->connecting_user_socket_fd = client_socket_fd;
 
+    // Create thread for the new user to send a welcome message to it.
     pthread_t welcome_thread;
     pthread_create(&welcome_thread, NULL, welcome, &client_socket_fd);
 

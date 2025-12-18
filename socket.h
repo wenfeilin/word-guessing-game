@@ -6,6 +6,9 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+// Necessary code for socket-related functionality.
+// Citation: P2P lab (starter code)
+
 /**
  * Create a new socket and connect to a server.
  *
