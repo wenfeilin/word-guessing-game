@@ -11,7 +11,7 @@
 /*******************
  * Global variables
  *******************/
-// Keep the username in a global so we can access it
+// Keep the username in a global so we can access it.
 const char *username;
 
 /**
@@ -28,31 +28,24 @@ void* send_to_server (void* args) {
   while (getline(&line, &size, stdin)) {
     line[strlen(line) - 1] = '\0';
 
-    // if (strcmp(line, "quit") == 0) { // Prompt to quit program
-    //   printf("Broke in send_to_server\n");
-    //   break;
-    // }
-
+    // Create message to send to server based on user input.
     user_info_t* user_info = malloc(sizeof(user_info_t));
     user_info->username = strdup(username);
     user_info->message = strdup(line);
 
     // Send message to server.
     int rc = send_message(socket_fd, user_info);
+
     if (rc == -1) {
       perror("Failed to send message to server");
-      close(socket_fd); // Close client's side of the socket connecting to server
+      close(socket_fd); // Close client's side of the socket connecting to server.
       exit(EXIT_FAILURE);
     }
 
-    if (strcmp(line, "quit") == 0) { // Prompt to quit program
-      // printf("Broke in send_to_server\n");
+    if (strcmp(line, "quit") == 0) { // Prompt to quit program.
       break;
     }
   }
-
-  close(socket_fd);
-  printf("Socket is closed.\n");
 
   return NULL;
 }
@@ -71,16 +64,15 @@ void* read_from_server (void* args) {
     // Receive a message from the server
     user_info_t* user_info = receive_message(socket_fd);
     
-    // If there is an error in receiving a message, ...
+    // Error receiving the message.
     if (user_info == NULL) {
-      // printf("Broke in read_from_server\n");
       break;
     }
 
     // Display message from server.
     printf("%s: %s\n", user_info->username, user_info->message);
 
-    // Free everything the message info.
+    // Free everything in the message info.
     free(user_info->username);
     free(user_info->message);
     free(user_info);
@@ -118,9 +110,9 @@ int main(int argc, char** argv) {
   pthread_join(send_message_thread, NULL);
   pthread_join(read_message_thread, NULL);
 
+  // Close the socket.
+  close(socket_fd);
   printf("Client should be closed now.\n");
-
-  // Maybe free stuff here and close user's end of the socket connecting to server?
 
   return 0;
 }
