@@ -611,7 +611,7 @@ void* forward_msg(void* args) {
 
       // The current host should always be sending a Y/N answer.
       if (user_socket_fd == server_info->curr_host->socket_fd &&
-          (strcmp(user_info->message, "yes") == 0 || strcmp(user_info->message, "no") == 0)) {
+          (strcasecmp(user_info->message, "yes") == 0 || strcasecmp(user_info->message, "no") == 0)) {
         // Change current asker
       
         pthread_mutex_lock(&server_info_global_lock);
