@@ -426,10 +426,15 @@ void* start_game(void* args) {
   free(server_pick_secret_msg->message);
   free(server_pick_secret_msg);
 
-  // Receive the secret word from the host.
+   // Create local copy of server_info to ONLY read data from the struct w/o needing to lock.
   pthread_mutex_lock(&server_info_global_lock);
-  user_info_t* user_info = receive_message(server_info_global->curr_host->socket_fd);
+  server_info_t* server_info_local = server_info_global;
   pthread_mutex_unlock(&server_info_global_lock);
+
+  // Receive the secret word from the host.
+  // pthread_mutex_lock(&server_info_global_lock);
+  user_info_t* user_info = receive_message(server_info_local->curr_host->socket_fd);
+  // pthread_mutex_unlock(&server_info_global_lock);
 
   // Send message to all players, except the host, signaling the start of the game.
   pthread_mutex_lock(&server_info_global_lock);
@@ -606,7 +611,7 @@ void* forward_msg(void* args) {
 
       // The current host should always be sending a Y/N answer.
       if (user_socket_fd == server_info->curr_host->socket_fd &&
-          (strcmp(user_info->message, "y") == 0 || strcmp(user_info->message, "n") == 0)) {
+          (strcmp(user_info->message, "yes") == 0 || strcmp(user_info->message, "no") == 0)) {
         // Change current asker
       
         pthread_mutex_lock(&server_info_global_lock);
@@ -713,6 +718,28 @@ void* forward_msg(void* args) {
   return NULL;
 } 
 
+
+void* welcome(void* args) {
+  int client_socket_fd = *(int*)args;
+  user_info_t* welcome_msg = malloc(sizeof(user_info_t));
+  welcome_msg->username = strdup("Server");
+  welcome_msg->message = strdup("Welcome to the Guessing Secret Word game!\n Each player will take turn to be the host and pick a secret word.\n Other players will take turn to ask yes/no questions to guess the secret word.\n Whoever makes the most correct guesses will be the winner!\n");
+
+  // Send a message to the first host to pick a secret word.
+  int rc = send_message(client_socket_fd, welcome_msg);
+
+  if (rc == -1) {
+    perror("Failed to send message to client");
+    exit(EXIT_FAILURE);
+  }
+
+  free(welcome_msg->username);
+  free(welcome_msg->message);
+  free(welcome_msg);
+
+  return NULL;
+}
+
 int main() {
   // Open a server socket
   unsigned short port = 0;
@@ -740,7 +767,7 @@ int main() {
   server_info_global->chat_users = users;
   server_info_global->is_game_initialized = false;
   server_info_global->curr_question = 0;
-  server_info_global->max_questions = 1;
+  server_info_global->max_questions = 2;
   server_info_global->is_receiving_secret_word = false;
   server_info_global->is_guessing = false;
   server_info_global->guessed_secret_word = false;
@@ -768,21 +795,8 @@ int main() {
     pthread_mutex_lock(&server_info_global_lock);
     server_info_global->connecting_user_socket_fd = client_socket_fd;
 
-    user_info_t* welcome_msg = malloc(sizeof(user_info_t));
-    welcome_msg->username = strdup("Server");
-    welcome_msg->message = strdup("Welcome to the Guessing Secret Word game!\n Each player will take turn to be the host and pick a secret word.\n Other players will take turn to ask yes/no questions to guess the secret word.\n Whoever makes the most correct guesses will be the winner!\n");
-
-    // Send a message to the first host to pick a secret word.
-    int rc = send_message(client_socket_fd, welcome_msg);
-
-    if (rc == -1) {
-      perror("Failed to send message to client");
-      exit(EXIT_FAILURE);
-    }
-
-    free(welcome_msg->username);
-    free(welcome_msg->message);
-    free(welcome_msg);
+    pthread_t welcome_thread;
+    pthread_create(&welcome_thread, NULL, welcome, &client_socket_fd);
 
     pthread_mutex_unlock(&server_info_global_lock);
 
