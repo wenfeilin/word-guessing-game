@@ -17,7 +17,7 @@ Every game consists of 2 phases:
 
 ## How to Run
 
-```
+```bash
 # 1. Make the project.
 $ make
 
